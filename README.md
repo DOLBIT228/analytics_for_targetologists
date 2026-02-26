@@ -90,6 +90,21 @@ streamlit run app.py
 
 Тепер застосунок автоматично нормалізує такий URL до базового формату `/rest/{user_id}/{token}`. Але все одно рекомендовано зберігати у секретах саме базовий webhook без назви методу.
 
+
+### Apps Script Web App error: `unknown_action`
+
+Якщо інкрементальна синхронізація завершується помилкою `Apps Script Web App error: {'ok': False, 'error': 'unknown_action'}`, зазвичай це означає, що у Web App розгорнута стара версія `Code.gs` з іншим набором action-ів.
+
+Що зроблено в поточній версії:
+- `apps_script/Code.gs` приймає canonical action + alias-и (наприклад `deleteRows`, `delete_row`, `append`, `count` тощо);
+- клієнт `sheets.py` автоматично пробує alias-и, якщо основний action не підтримується;
+- у відповідь `unknown_action` тепер повертається також `action_received`, щоб швидше діагностувати проблему.
+
+Щоб виправити помилку:
+1. Оновіть Apps Script код з `apps_script/Code.gs`.
+2. Зробіть **Deploy → Manage deployments → Edit → Deploy** (обов'язково перевипустіть deployment).
+3. Перевірте, що `google.web_app_url` у `secrets.toml` вказує саме на актуальний deployment URL.
+
 ### inotify watch limit reached
 
 Для локального запуску Streamlit на Linux можна вимкнути file watcher:
