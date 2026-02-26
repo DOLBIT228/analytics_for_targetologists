@@ -71,3 +71,25 @@ streamlit run app.py
 - Якщо код стадії відсутній у `STAGE_MAP`, використовується сирий `STAGE_ID`.
 - Початкова синхронізація видаляє дублікати по `deal_id` перед upsert.
 - Інкрементальна синхронізація читає `state.json` та оновлює його після кожного запуску.
+
+## Типові помилки
+
+### ImportError: cannot import name 'read_secret' from 'config'
+
+Це часто похідна помилка: модуль `config.py` падає під час імпорту раніше, ніж Python доходить до визначення `read_secret`.
+
+Один із типових сценаріїв — невалідний JSON у `google.service_account_info` (або `GOOGLE_SERVICE_ACCOUNT_INFO`). Тепер застосунок безпечно обробляє такий випадок і переходить у fallback-режим (`None`) замість падіння імпорту.
+
+Що перевірити:
+- якщо використовуєте service account через JSON-рядок, переконайтесь, що це валідний JSON;
+- або використовуйте режим Apps Script Web App (`google.web_app_url` + `google.web_app_token`).
+
+### inotify watch limit reached
+
+Для локального запуску Streamlit на Linux можна вимкнути file watcher:
+
+```bash
+streamlit run app.py --server.fileWatcherType none
+```
+
+Це прибирає помилку `inotify watch limit reached` у середовищах з обмеженим лімітом watcher-ів.
