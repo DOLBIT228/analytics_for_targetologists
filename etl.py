@@ -49,9 +49,13 @@ def load_state() -> dict[str, Any]:
         return json.load(fh)
 
 
-def save_state(last_sync_timestamp: str) -> None:
+def save_state(last_sync_timestamp: str | None) -> None:
     with STATE_FILE.open("w", encoding="utf-8") as fh:
         json.dump({"last_sync_timestamp": last_sync_timestamp}, fh, ensure_ascii=False, indent=2)
+
+
+def reset_sync_state() -> None:
+    save_state(None)
 
 
 def _upsert_rows(sheet_client: GoogleSheetsClient, normalized_deals: list[dict[str, Any]]) -> dict[str, int]:
@@ -74,6 +78,24 @@ def _upsert_rows(sheet_client: GoogleSheetsClient, normalized_deals: list[dict[s
     return {"appended": len(to_append), "updated": updated}
 
 
+def _fetch_all_utm_deal_ids(bitrix_client: BitrixClient) -> set[str]:
+    existing_ids: set[str] = set()
+    for pipeline_id in PIPELINES:
+        deals = bitrix_client.list_deals(category_id=pipeline_id)
+        for deal in deals:
+            if has_any_utm(deal):
+                deal_id = str(deal.get("ID", "")).strip()
+                if deal_id:
+                    existing_ids.add(deal_id)
+    return existing_ids
+
+
+def _delete_missing_or_non_utm(sheet_client: GoogleSheetsClient, valid_deal_ids: set[str]) -> int:
+    _, index = sheet_client.load_sheet_data()
+    to_delete = [row_num for deal_id, row_num in index.items() if deal_id not in valid_deal_ids]
+    return sheet_client.delete_rows(to_delete)
+
+
 def initial_full_sync(
     bitrix_client: BitrixClient | None = None,
     sheet_client: GoogleSheetsClient | None = None,
@@ -93,9 +115,9 @@ def initial_full_sync(
                 filtered += 1
                 normalized.append(_normalize_deal(deal))
 
-    # Deduplicate input by deal_id with latest observed row (last write wins).
     dedup: dict[str, dict[str, Any]] = {row["deal_id"]: row for row in normalized if row.get("deal_id")}
     upsert_stats = _upsert_rows(sheet_client, list(dedup.values()))
+    deleted = _delete_missing_or_non_utm(sheet_client, set(dedup.keys()))
     save_state(now_iso())
 
     result = {
@@ -104,6 +126,7 @@ def initial_full_sync(
         "matched_utm": filtered,
         "unique_deals": len(dedup),
         **upsert_stats,
+        "deleted": deleted,
         "last_sync_timestamp": load_state().get("last_sync_timestamp"),
     }
     logger.info("Initial sync completed: %s", result)
@@ -127,6 +150,9 @@ def incremental_sync(
     dedup: dict[str, dict[str, Any]] = {row["deal_id"]: row for row in normalized if row.get("deal_id")}
     upsert_stats = _upsert_rows(sheet_client, list(dedup.values())) if dedup else {"appended": 0, "updated": 0}
 
+    valid_deal_ids = _fetch_all_utm_deal_ids(bitrix_client)
+    deleted = _delete_missing_or_non_utm(sheet_client, valid_deal_ids)
+
     save_state(now_iso())
     result = {
         "mode": "incremental_sync",
@@ -135,6 +161,7 @@ def incremental_sync(
         "matched_utm": len(normalized),
         "unique_deals": len(dedup),
         **upsert_stats,
+        "deleted": deleted,
         "last_sync_timestamp": load_state().get("last_sync_timestamp"),
     }
     logger.info("Incremental sync completed: %s", result)

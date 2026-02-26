@@ -8,7 +8,7 @@ from io import StringIO
 import streamlit as st
 
 import config
-from etl import incremental_sync, initial_full_sync, load_state
+from etl import incremental_sync, initial_full_sync, load_state, reset_sync_state
 from sheets import GoogleSheetsClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -102,7 +102,7 @@ def main() -> None:
 
     sheet_client = get_sheet_client()
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Запустити інкрементальну синхронізацію", type="primary"):
             with st.spinner("Виконується інкрементальна синхронізація..."):
@@ -122,6 +122,16 @@ def main() -> None:
                     st.json(result)
                 except Exception as exc:
                     st.error(f"Початкова синхронізація завершилась з помилкою: {exc}")
+
+    with col3:
+        if st.button("Повне очищення таблиці", type="secondary"):
+            with st.spinner("Очищення таблиці та state..."):
+                try:
+                    sheet_client.clear_all_data()
+                    reset_sync_state()
+                    st.success("Таблицю очищено, стан синхронізації скинуто")
+                except Exception as exc:
+                    st.error(f"Помилка очищення: {exc}")
 
     st.subheader("Логи")
     st.code(ui_handler.get_logs() or "Логів поки немає.")
