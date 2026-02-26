@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from bitrix import BitrixClient
 from config import PIPELINES, STATE_FILE
@@ -12,6 +12,8 @@ from mapping import PIPELINE_MAP, STAGE_MAP
 from sheets import GoogleSheetsClient
 
 logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[float, str], None]
 
 UTM_FIELDS = ["UTM_SOURCE", "UTM_MEDIUM", "UTM_CAMPAIGN", "UTM_TERM", "UTM_CONTENT"]
 
@@ -101,9 +103,15 @@ def _delete_missing_or_non_utm(sheet_client: GoogleSheetsClient, valid_deal_ids:
     return sheet_client.delete_rows(to_delete)
 
 
+def _notify_progress(progress_callback: ProgressCallback | None, ratio: float, message: str) -> None:
+    if progress_callback:
+        progress_callback(max(0.0, min(1.0, ratio)), message)
+
+
 def initial_full_sync(
     bitrix_client: BitrixClient | None = None,
     sheet_client: GoogleSheetsClient | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     bitrix_client = bitrix_client or BitrixClient()
     sheet_client = sheet_client or GoogleSheetsClient()
@@ -111,6 +119,8 @@ def initial_full_sync(
     fetched = 0
     filtered = 0
     normalized: list[dict[str, Any]] = []
+
+    _notify_progress(progress_callback, 0.05, "Починаємо повну синхронізацію")
 
     for pipeline_id in PIPELINES:
         deals = bitrix_client.list_deals(category_id=pipeline_id)
@@ -120,10 +130,14 @@ def initial_full_sync(
                 filtered += 1
                 normalized.append(_normalize_deal(deal))
 
+    _notify_progress(progress_callback, 0.45, "Дані з Bitrix завантажено, виконуємо upsert")
+
     dedup: dict[str, dict[str, Any]] = {row["deal_id"]: row for row in normalized if row.get("deal_id")}
     upsert_stats = _upsert_rows(sheet_client, list(dedup.values()))
+    _notify_progress(progress_callback, 0.75, "Upsert завершено, шукаємо рядки для видалення")
     deleted = _delete_missing_or_non_utm(sheet_client, set(dedup.keys()))
     save_state(now_iso())
+    _notify_progress(progress_callback, 1.0, "Повну синхронізацію завершено")
 
     result = {
         "mode": "initial_full_sync",
@@ -141,6 +155,7 @@ def initial_full_sync(
 def incremental_sync(
     bitrix_client: BitrixClient | None = None,
     sheet_client: GoogleSheetsClient | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     bitrix_client = bitrix_client or BitrixClient()
     sheet_client = sheet_client or GoogleSheetsClient()
@@ -148,17 +163,23 @@ def incremental_sync(
     state = load_state()
     last_sync = state.get("last_sync_timestamp")
 
+    _notify_progress(progress_callback, 0.05, "Починаємо інкрементальну синхронізацію")
+
     deals = bitrix_client.list_deals(date_modify_gt=last_sync) if last_sync else []
     fetched = len(deals)
+    _notify_progress(progress_callback, 0.3, "Отримано змінені угоди, виконуємо upsert")
 
     normalized = [_normalize_deal(d) for d in deals if has_any_utm(d)]
     dedup: dict[str, dict[str, Any]] = {row["deal_id"]: row for row in normalized if row.get("deal_id")}
     upsert_stats = _upsert_rows(sheet_client, list(dedup.values())) if dedup else {"appended": 0, "updated": 0}
 
+    _notify_progress(progress_callback, 0.55, "Оновлення завершено, звіряємо наявність угод")
     valid_deal_ids = _fetch_all_utm_deal_ids(bitrix_client)
+    _notify_progress(progress_callback, 0.8, "Видаляємо угоди, яких більше немає в CRM")
     deleted = _delete_missing_or_non_utm(sheet_client, valid_deal_ids)
 
     save_state(now_iso())
+    _notify_progress(progress_callback, 1.0, "Інкрементальну синхронізацію завершено")
     result = {
         "mode": "incremental_sync",
         "from_timestamp": last_sync,
