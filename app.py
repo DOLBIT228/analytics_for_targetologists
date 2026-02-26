@@ -1,4 +1,4 @@
-"""Streamlit UI for manual ETL execution."""
+"""Streamlit UI для ручного запуску ETL."""
 from __future__ import annotations
 
 import json
@@ -7,6 +7,7 @@ from io import StringIO
 
 import streamlit as st
 
+from config import read_secret
 from etl import incremental_sync, initial_full_sync, load_state
 from sheets import GoogleSheetsClient
 
@@ -25,25 +26,56 @@ class UILogHandler(logging.Handler):
         return self.stream.getvalue()
 
 
+def require_login() -> bool:
+    """Проста авторизація через Streamlit secrets."""
+    configured_username = str(read_secret("auth.username", "APP_USERNAME", "")).strip()
+    configured_password = str(read_secret("auth.password", "APP_PASSWORD", "")).strip()
+
+    if not configured_username or not configured_password:
+        st.info("Авторизацію не налаштовано (auth.username/auth.password). Доступ відкритий.")
+        return True
+
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return True
+
+    st.subheader("Вхід до застосунку")
+    username = st.text_input("Логін")
+    password = st.text_input("Пароль", type="password")
+    if st.button("Увійти", type="primary"):
+        if username == configured_username and password == configured_password:
+            st.session_state.authenticated = True
+            st.success("Успішний вхід")
+            st.rerun()
+        else:
+            st.error("Неправильний логін або пароль")
+    return False
+
+
 def render_status_panel() -> None:
     state = load_state()
     last_sync = state.get("last_sync_timestamp")
 
-    deals_count = "N/A"
+    deals_count = "Н/Д"
     try:
         deals_count = GoogleSheetsClient().count_deals()
     except Exception as exc:
-        st.warning(f"Could not read deals count from Google Sheets: {exc}")
+        st.warning(f"Не вдалося прочитати кількість угод з Google Sheets: {exc}")
 
     c1, c2 = st.columns(2)
-    c1.metric("Last sync timestamp", str(last_sync))
-    c2.metric("Deals in sheet", str(deals_count))
+    c1.metric("Остання синхронізація", str(last_sync))
+    c2.metric("Угод у таблиці", str(deals_count))
 
 
 def main() -> None:
     st.set_page_config(page_title="Bitrix24 -> Google Sheets ETL", layout="wide")
-    st.title("Bitrix24 CRM Sync")
-    st.caption("Manual sync mode: app catches up on updates when button is pressed.")
+    st.title("Синхронізація Bitrix24 CRM")
+    st.caption("Ручний режим синхронізації: дані оновлюються після натискання кнопки.")
+
+    if not require_login():
+        return
 
     render_status_panel()
 
@@ -54,29 +86,29 @@ def main() -> None:
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Run Incremental Sync", type="primary"):
-            with st.spinner("Running incremental sync..."):
+        if st.button("Запустити інкрементальну синхронізацію", type="primary"):
+            with st.spinner("Виконується інкрементальна синхронізація..."):
                 try:
                     result = incremental_sync()
-                    st.success("Incremental sync completed")
+                    st.success("Інкрементальну синхронізацію завершено")
                     st.json(result)
                 except Exception as exc:
-                    st.error(f"Incremental sync failed: {exc}")
+                    st.error(f"Інкрементальна синхронізація завершилась з помилкою: {exc}")
 
     with col2:
-        if st.button("Run Full Initial Sync"):
-            with st.spinner("Running initial full sync..."):
+        if st.button("Запустити повну початкову синхронізацію"):
+            with st.spinner("Виконується повна початкова синхронізація..."):
                 try:
                     result = initial_full_sync()
-                    st.success("Full initial sync completed")
+                    st.success("Повну початкову синхронізацію завершено")
                     st.json(result)
                 except Exception as exc:
-                    st.error(f"Initial full sync failed: {exc}")
+                    st.error(f"Початкова синхронізація завершилась з помилкою: {exc}")
 
-    st.subheader("Logs")
-    st.code(ui_handler.get_logs() or "No logs yet.")
+    st.subheader("Логи")
+    st.code(ui_handler.get_logs() or "Логів поки немає.")
 
-    st.subheader("Current state.json")
+    st.subheader("Поточний state.json")
     st.code(json.dumps(load_state(), ensure_ascii=False, indent=2), language="json")
 
 
