@@ -7,7 +7,7 @@ from io import StringIO
 
 import streamlit as st
 
-from config import read_secret
+import config
 from etl import incremental_sync, initial_full_sync, load_state
 from sheets import GoogleSheetsClient
 
@@ -28,8 +28,14 @@ class UILogHandler(logging.Handler):
 
 def require_login() -> bool:
     """Проста авторизація через Streamlit secrets."""
-    configured_username = str(read_secret("auth.username", "APP_USERNAME", "")).strip()
-    configured_password = str(read_secret("auth.password", "APP_PASSWORD", "")).strip()
+    read_secret_fn = getattr(config, "read_secret", None)
+
+    if callable(read_secret_fn):
+        configured_username = str(read_secret_fn("auth.username", "APP_USERNAME", "")).strip()
+        configured_password = str(read_secret_fn("auth.password", "APP_PASSWORD", "")).strip()
+    else:
+        configured_username = str(st.secrets.get("auth", {}).get("username", "") or "").strip()
+        configured_password = str(st.secrets.get("auth", {}).get("password", "") or "").strip()
 
     if not configured_username or not configured_password:
         st.info("Авторизацію не налаштовано (auth.username/auth.password). Доступ відкритий.")
