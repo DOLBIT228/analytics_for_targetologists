@@ -22,6 +22,17 @@ from config import (
 logger = logging.getLogger(__name__)
 
 
+WEB_APP_ACTION_ALIASES: dict[str, list[str]] = {
+    "clear_data": ["clear_all_data", "clear_sheet"],
+    "load_sheet_data": ["get_sheet_data", "load_data"],
+    "count_deals": ["count_rows", "get_count"],
+    "update_row": ["update_row_by_number"],
+    "delete_rows": ["remove_rows"],
+    "append_rows": ["append"],
+    "ensure_header": ["init_header"],
+}
+
+
 class GoogleSheetsClient:
     def __init__(self, spreadsheet_id: str | None = None, credentials_file: str | None = None) -> None:
         self.spreadsheet_id = spreadsheet_id or GOOGLE_SPREADSHEET_ID
@@ -50,20 +61,31 @@ class GoogleSheetsClient:
         self.ensure_header()
 
     def _web_app_request(self, action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        body = {
-            "action": action,
-            "token": self.web_app_token,
-            "spreadsheet_id": self.spreadsheet_id,
-            "sheet_name": MASTER_SHEET_NAME,
-            "columns": MASTER_COLUMNS,
-            **(payload or {}),
-        }
-        response = requests.post(self.web_app_url, json=body, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-        if not data.get("ok"):
-            raise RuntimeError(f"Apps Script Web App error: {data}")
-        return data
+        actions_to_try = [action, *WEB_APP_ACTION_ALIASES.get(action, [])]
+        last_data: dict[str, Any] | None = None
+
+        for current_action in actions_to_try:
+            body = {
+                "action": current_action,
+                "token": self.web_app_token,
+                "spreadsheet_id": self.spreadsheet_id,
+                "sheet_name": MASTER_SHEET_NAME,
+                "columns": MASTER_COLUMNS,
+                **(payload or {}),
+            }
+            response = requests.post(self.web_app_url, json=body, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            if data.get("ok"):
+                if current_action != action:
+                    logger.warning("Web App action '%s' is not supported, used fallback '%s'", action, current_action)
+                return data
+
+            last_data = data
+            if data.get("error") != "unknown_action":
+                break
+
+        raise RuntimeError(f"Apps Script Web App error: {last_data}")
 
     def ensure_header(self) -> None:
         if self.mode == "web_app":
