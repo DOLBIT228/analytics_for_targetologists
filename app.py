@@ -66,13 +66,20 @@ def render_status_panel() -> None:
 
     deals_count = "Н/Д"
     try:
-        deals_count = GoogleSheetsClient().count_deals()
+        deals_count = get_sheet_client().count_deals()
     except Exception as exc:
         st.warning(f"Не вдалося прочитати кількість угод з Google Sheets: {exc}")
 
     c1, c2 = st.columns(2)
     c1.metric("Остання синхронізація", str(last_sync))
     c2.metric("Угод у таблиці", str(deals_count))
+
+
+def get_sheet_client() -> GoogleSheetsClient:
+    """Повертає кешований інстанс клієнта Google Sheets в межах сесії Streamlit."""
+    if "sheet_client" not in st.session_state:
+        st.session_state.sheet_client = GoogleSheetsClient()
+    return st.session_state.sheet_client
 
 
 def main() -> None:
@@ -85,17 +92,22 @@ def main() -> None:
 
     render_status_panel()
 
-    ui_handler = UILogHandler()
-    ui_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
     root_logger = logging.getLogger()
-    root_logger.addHandler(ui_handler)
+    ui_handler = st.session_state.get("ui_log_handler")
+    if ui_handler is None:
+        ui_handler = UILogHandler()
+        ui_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
+        root_logger.addHandler(ui_handler)
+        st.session_state.ui_log_handler = ui_handler
+
+    sheet_client = get_sheet_client()
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Запустити інкрементальну синхронізацію", type="primary"):
             with st.spinner("Виконується інкрементальна синхронізація..."):
                 try:
-                    result = incremental_sync()
+                    result = incremental_sync(sheet_client=sheet_client)
                     st.success("Інкрементальну синхронізацію завершено")
                     st.json(result)
                 except Exception as exc:
@@ -105,7 +117,7 @@ def main() -> None:
         if st.button("Запустити повну початкову синхронізацію"):
             with st.spinner("Виконується повна початкова синхронізація..."):
                 try:
-                    result = initial_full_sync()
+                    result = initial_full_sync(sheet_client=sheet_client)
                     st.success("Повну початкову синхронізацію завершено")
                     st.json(result)
                 except Exception as exc:
