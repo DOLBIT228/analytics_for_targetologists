@@ -21,7 +21,12 @@ def now_iso() -> str:
 
 
 def has_any_utm(deal: dict[str, Any]) -> bool:
-    return any(str(deal.get(field, "")).strip() for field in UTM_FIELDS)
+    def _is_filled(value: Any) -> bool:
+        if value is None:
+            return False
+        return bool(str(value).strip())
+
+    return any(_is_filled(deal.get(field, "")) for field in UTM_FIELDS)
 
 
 def _normalize_deal(deal: dict[str, Any]) -> dict[str, Any]:
