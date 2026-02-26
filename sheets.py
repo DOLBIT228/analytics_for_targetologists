@@ -27,7 +27,7 @@ WEB_APP_ACTION_ALIASES: dict[str, list[str]] = {
     "load_sheet_data": ["get_sheet_data", "load_data", "list_rows"],
     "count_deals": ["count_rows", "get_count", "count"],
     "update_row": ["update_row_by_number", "update"],
-    "delete_rows": ["remove_rows", "delete", "deleteRows", "remove"],
+    "delete_rows": ["remove_rows", "delete", "deleteRows", "remove", "delete_row"],
     "append_rows": ["append", "append_data", "insert_rows"],
     "ensure_header": ["init_header", "ensure_columns", "set_header"],
 }
@@ -75,7 +75,10 @@ class GoogleSheetsClient:
             }
             response = requests.post(self.web_app_url, json=body, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
-            data = response.json()
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise RuntimeError(f"Apps Script Web App returned non-JSON response for action '{current_action}': {response.text[:500]}") from exc
             if data.get("ok"):
                 if current_action != action:
                     logger.warning("Web App action '%s' is not supported, used fallback '%s'", action, current_action)
@@ -85,7 +88,7 @@ class GoogleSheetsClient:
             if data.get("error") != "unknown_action":
                 break
 
-        raise RuntimeError(f"Apps Script Web App error: {last_data}")
+        raise RuntimeError(f"Apps Script Web App error for action '{action}' (tried: {actions_to_try}): {last_data}")
 
     def ensure_header(self) -> None:
         if self.mode == "web_app":

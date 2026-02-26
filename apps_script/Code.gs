@@ -1,21 +1,90 @@
 const WEB_APP_TOKEN = 'replace-with-strong-random-token';
 
+const ACTION_ALIASES = {
+  ensure_header: ['ensure_header', 'init_header', 'ensure_columns', 'set_header'],
+  load_sheet_data: ['load_sheet_data', 'get_sheet_data', 'load_data', 'list_rows'],
+  append_rows: ['append_rows', 'append', 'append_data', 'insert_rows'],
+  update_row: ['update_row', 'update_row_by_number', 'update', 'update_row_by_id'],
+  delete_rows: ['delete_rows', 'remove_rows', 'delete', 'deleteRows', 'remove', 'delete_row'],
+  clear_data: ['clear_data', 'clear_all_data', 'clear_sheet', 'clear', 'truncate_data'],
+  count_deals: ['count_deals', 'count_rows', 'get_count', 'count'],
+};
+
 function jsonResponse(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
 }
 
+function parseBody(e) {
+  if (!e) return {};
+
+  if (e.postData && e.postData.contents) {
+    try {
+      return JSON.parse(e.postData.contents);
+    } catch (err) {
+      return {};
+    }
+  }
+
+  return e.parameter || {};
+}
+
+function canonicalAction(rawAction) {
+  const action = String(rawAction || '').trim();
+  if (!action) return '';
+
+  for (const [canonical, aliases] of Object.entries(ACTION_ALIASES)) {
+    if (aliases.indexOf(action) !== -1) {
+      return canonical;
+    }
+  }
+
+  return action;
+}
+
+function deleteRowsDescending(sheet, rowNumbers) {
+  // Видаляємо групами послідовних рядків, щоб зменшити кількість операцій.
+  if (!rowNumbers || rowNumbers.length === 0) return 0;
+
+  let deleted = 0;
+  let runStart = rowNumbers[0];
+  let runLength = 1;
+
+  for (let i = 1; i < rowNumbers.length; i++) {
+    const current = rowNumbers[i];
+    const prev = rowNumbers[i - 1];
+
+    if (current === prev - 1) {
+      runLength += 1;
+      continue;
+    }
+
+    sheet.deleteRows(runStart - runLength + 1, runLength);
+    deleted += runLength;
+    runStart = current;
+    runLength = 1;
+  }
+
+  sheet.deleteRows(runStart - runLength + 1, runLength);
+  deleted += runLength;
+  return deleted;
+}
+
 function doPost(e) {
   try {
-    const body = JSON.parse(e.postData.contents || '{}');
+    const body = parseBody(e);
 
     if (!body.token || body.token !== WEB_APP_TOKEN) {
       return jsonResponse({ ok: false, error: 'unauthorized' });
     }
 
-    const spreadsheetId = body.spreadsheet_id;
-    const sheetName = body.sheet_name;
-    const columns = body.columns || [];
-    const action = body.action;
+    const spreadsheetId = String(body.spreadsheet_id || '').trim();
+    const sheetName = String(body.sheet_name || '').trim();
+    const columns = Array.isArray(body.columns) ? body.columns : [];
+    const action = canonicalAction(body.action);
+
+    if (!spreadsheetId || !sheetName) {
+      return jsonResponse({ ok: false, error: 'invalid_request', details: 'spreadsheet_id or sheet_name is missing' });
+    }
 
     const ss = SpreadsheetApp.openById(spreadsheetId);
     const sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
@@ -78,8 +147,8 @@ function doPost(e) {
         .filter((v) => Number.isFinite(v) && v >= 2)
         .sort((a, b) => b - a);
 
-      rowNumbers.forEach((rowNumber) => sheet.deleteRow(rowNumber));
-      return jsonResponse({ ok: true, deleted: rowNumbers.length });
+      const deleted = deleteRowsDescending(sheet, rowNumbers);
+      return jsonResponse({ ok: true, deleted: deleted });
     }
 
     if (action === 'clear_data') {
@@ -95,7 +164,7 @@ function doPost(e) {
       return jsonResponse({ ok: true, count: count });
     }
 
-    return jsonResponse({ ok: false, error: 'unknown_action' });
+    return jsonResponse({ ok: false, error: 'unknown_action', action_received: String(body.action || '') });
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) });
   }
