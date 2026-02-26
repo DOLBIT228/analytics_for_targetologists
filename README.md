@@ -84,6 +84,12 @@ streamlit run app.py
 - якщо використовуєте service account через JSON-рядок, переконайтесь, що це валідний JSON;
 - або використовуйте режим Apps Script Web App (`google.web_app_url` + `google.web_app_token`).
 
+### 404 .../crm.deal.list.json/crm.deal.list.json
+
+Це означає, що в `bitrix.webhook_url` (або `BITRIX_WEBHOOK_URL`) передано не базовий webhook, а URL методу (наприклад із хвостом `/crm.deal.list.json`).
+
+Тепер застосунок автоматично нормалізує такий URL до базового формату `/rest/{user_id}/{token}`. Але все одно рекомендовано зберігати у секретах саме базовий webhook без назви методу.
+
 ### inotify watch limit reached
 
 Для локального запуску Streamlit на Linux можна вимкнути file watcher:

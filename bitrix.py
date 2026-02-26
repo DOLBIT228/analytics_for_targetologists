@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -16,9 +17,21 @@ class BitrixClient:
     """Client wrapper over Bitrix webhook API."""
 
     def __init__(self, webhook_url: str | None = None) -> None:
-        self.webhook_url = (webhook_url or BITRIX_WEBHOOK_URL).rstrip("/")
+        self.webhook_url = self._normalize_webhook_url(webhook_url or BITRIX_WEBHOOK_URL)
         if not self.webhook_url:
             raise ValueError("BITRIX_WEBHOOK_URL is not configured")
+
+    @staticmethod
+    def _normalize_webhook_url(webhook_url: str) -> str:
+        """Normalize webhook URL to the base /rest/{user}/{token} format."""
+        normalized = (webhook_url or "").strip().rstrip("/")
+        if not normalized:
+            return ""
+
+        # Support a full method URL accidentally pasted into config,
+        # e.g. .../crm.deal.list.json or .../crm.deal.list.json/crm.deal.list.json
+        normalized = re.sub(r"/(?:[a-z0-9_.]+\.json)+$", "", normalized, flags=re.IGNORECASE)
+        return normalized
 
     def _request(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.webhook_url}/{method}.json"
