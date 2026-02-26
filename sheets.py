@@ -23,13 +23,13 @@ logger = logging.getLogger(__name__)
 
 
 WEB_APP_ACTION_ALIASES: dict[str, list[str]] = {
-    "clear_data": ["clear_all_data", "clear_sheet"],
-    "load_sheet_data": ["get_sheet_data", "load_data"],
-    "count_deals": ["count_rows", "get_count"],
-    "update_row": ["update_row_by_number"],
-    "delete_rows": ["remove_rows"],
-    "append_rows": ["append"],
-    "ensure_header": ["init_header"],
+    "clear_data": ["clear_all_data", "clear_sheet", "clear", "truncate_data"],
+    "load_sheet_data": ["get_sheet_data", "load_data", "list_rows"],
+    "count_deals": ["count_rows", "get_count", "count"],
+    "update_row": ["update_row_by_number", "update"],
+    "delete_rows": ["remove_rows", "delete", "deleteRows", "remove"],
+    "append_rows": ["append", "append_data", "insert_rows"],
+    "ensure_header": ["init_header", "ensure_columns", "set_header"],
 }
 
 

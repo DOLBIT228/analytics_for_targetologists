@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from io import StringIO
 
 import streamlit as st
@@ -102,36 +103,64 @@ def main() -> None:
 
     sheet_client = get_sheet_client()
 
+    progress_placeholder = st.empty()
+    status_placeholder = st.empty()
+
+    def make_progress_callback(start_ts: float):
+        progress_bar = progress_placeholder.progress(0.0, text="Очікування запуску...")
+
+        def _progress_callback(progress: float, message: str) -> None:
+            elapsed = int(time.time() - start_ts)
+            progress_bar.progress(progress, text=f"{message} (минуло: {elapsed} с)")
+            status_placeholder.info(f"Статус: {message}. Минуло: {elapsed} с")
+
+        return _progress_callback
+
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Запустити інкрементальну синхронізацію", type="primary"):
+            start_ts = time.time()
+            progress_callback = make_progress_callback(start_ts)
             with st.spinner("Виконується інкрементальна синхронізація..."):
                 try:
-                    result = incremental_sync(sheet_client=sheet_client)
+                    result = incremental_sync(sheet_client=sheet_client, progress_callback=progress_callback)
                     st.success("Інкрементальну синхронізацію завершено")
+                    status_placeholder.success(f"Готово за {int(time.time() - start_ts)} с")
                     st.json(result)
                 except Exception as exc:
                     st.error(f"Інкрементальна синхронізація завершилась з помилкою: {exc}")
+                    status_placeholder.error(f"Помилка через {int(time.time() - start_ts)} с")
 
     with col2:
         if st.button("Запустити повну початкову синхронізацію"):
+            start_ts = time.time()
+            progress_callback = make_progress_callback(start_ts)
             with st.spinner("Виконується повна початкова синхронізація..."):
                 try:
-                    result = initial_full_sync(sheet_client=sheet_client)
+                    result = initial_full_sync(sheet_client=sheet_client, progress_callback=progress_callback)
                     st.success("Повну початкову синхронізацію завершено")
+                    status_placeholder.success(f"Готово за {int(time.time() - start_ts)} с")
                     st.json(result)
                 except Exception as exc:
                     st.error(f"Початкова синхронізація завершилась з помилкою: {exc}")
+                    status_placeholder.error(f"Помилка через {int(time.time() - start_ts)} с")
 
     with col3:
         if st.button("Повне очищення таблиці", type="secondary"):
+            start_ts = time.time()
+            progress_callback = make_progress_callback(start_ts)
+            progress_callback(0.1, "Запит очищення таблиці")
             with st.spinner("Очищення таблиці та state..."):
                 try:
                     sheet_client.clear_all_data()
+                    progress_callback(0.7, "Таблицю очищено, скидаємо стан")
                     reset_sync_state()
+                    progress_callback(1.0, "Очищення завершено")
                     st.success("Таблицю очищено, стан синхронізації скинуто")
+                    status_placeholder.success(f"Готово за {int(time.time() - start_ts)} с")
                 except Exception as exc:
                     st.error(f"Помилка очищення: {exc}")
+                    status_placeholder.error(f"Помилка через {int(time.time() - start_ts)} с")
 
     st.subheader("Логи")
     st.code(ui_handler.get_logs() or "Логів поки немає.")
