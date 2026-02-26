@@ -111,6 +111,46 @@ class GoogleSheetsClient:
         end_col = chr(ord("A") + len(MASTER_COLUMNS) - 1)
         self.sheet.update(f"{start_col}{row_number}:{end_col}{row_number}", [values])
 
+    def delete_rows(self, row_numbers: list[int]) -> int:
+        """Видаляє рядки за номерами (2..N), повертає кількість видалених."""
+        if not row_numbers:
+            return 0
+
+        unique_desc = sorted(set(int(r) for r in row_numbers if int(r) >= 2), reverse=True)
+        if not unique_desc:
+            return 0
+
+        if self.mode == "web_app":
+            self._web_app_request("delete_rows", {"row_numbers": unique_desc})
+            return len(unique_desc)
+
+        sheet_id = self.sheet.id
+        requests_body = [
+            {
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "ROWS",
+                        "startIndex": row_num - 1,
+                        "endIndex": row_num,
+                    }
+                }
+            }
+            for row_num in unique_desc
+        ]
+        self.sheet.spreadsheet.batch_update({"requests": requests_body})
+        return len(unique_desc)
+
+    def clear_all_data(self) -> None:
+        """Очищає всі дані окрім заголовка."""
+        if self.mode == "web_app":
+            self._web_app_request("clear_data")
+            return
+
+        last_row = self.sheet.row_count
+        if last_row > 1:
+            self.sheet.batch_clear([f"A2:{chr(ord('A') + len(MASTER_COLUMNS) - 1)}{last_row}"])
+
     def count_deals(self) -> int:
         if self.mode == "web_app":
             data = self._web_app_request("count_deals")

@@ -91,3 +91,33 @@ class BitrixClient:
             start = int(next_start)
 
         return deals
+
+    def list_deal_ids(self, *, category_id: int | None = None) -> set[str]:
+        """Return all deal IDs for a given pipeline."""
+        ids: set[str] = set()
+        start = 0
+
+        while True:
+            flt: dict[str, Any] = {}
+            if category_id is not None:
+                flt["CATEGORY_ID"] = category_id
+
+            payload = {
+                "filter": flt,
+                "select": ["ID"],
+                "start": start,
+            }
+
+            data = self._request("crm.deal.list", payload)
+            page_items = data.get("result", [])
+            for item in page_items:
+                deal_id = str(item.get("ID", "")).strip()
+                if deal_id:
+                    ids.add(deal_id)
+
+            next_start = data.get("next")
+            if next_start is None:
+                break
+            start = int(next_start)
+
+        return ids

@@ -72,6 +72,24 @@ function doPost(e) {
       return jsonResponse({ ok: true });
     }
 
+    if (action === 'delete_rows') {
+      const rowNumbers = (body.row_numbers || [])
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v) && v >= 2)
+        .sort((a, b) => b - a);
+
+      rowNumbers.forEach((rowNumber) => sheet.deleteRow(rowNumber));
+      return jsonResponse({ ok: true, deleted: rowNumbers.length });
+    }
+
+    if (action === 'clear_data') {
+      const lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+        sheet.getRange(2, 1, lastRow - 1, columns.length).clearContent();
+      }
+      return jsonResponse({ ok: true });
+    }
+
     if (action === 'count_deals') {
       const count = Math.max(sheet.getLastRow() - 1, 0);
       return jsonResponse({ ok: true, count: count });
