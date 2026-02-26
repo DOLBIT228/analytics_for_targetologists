@@ -1,15 +1,15 @@
-"""Static mapping for Bitrix pipeline/stage names."""
+"""Статичні мапінги назв воронок і стадій Bitrix."""
 
 PIPELINE_MAP = {
     57: "Обручки Продаж в Переписці",
-    47: "Pipeline 47",
-    61: "Pipeline 61",
-    63: "Pipeline 63",
-    65: "Pipeline 65",
-    41: "Pipeline 41",
+    47: "Воронка 47",
+    61: "Воронка 61",
+    63: "Воронка 63",
+    65: "Воронка 65",
+    41: "Воронка 41",
 }
 
-# Extend this mapping with all known stage IDs.
+# Розширте мапінг усіма відомими STAGE_ID.
 STAGE_MAP = {
     "C57:NEW": "Новий лід",
 }
