@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import gspread
@@ -16,7 +17,9 @@ from config import (
     GOOGLE_WEB_APP_URL,
     MASTER_COLUMNS,
     MASTER_SHEET_NAME,
+    MAX_RETRIES,
     REQUEST_TIMEOUT,
+    RETRY_DELAY_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,12 +76,7 @@ class GoogleSheetsClient:
                 "columns": MASTER_COLUMNS,
                 **(payload or {}),
             }
-            response = requests.post(self.web_app_url, json=body, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise RuntimeError(f"Apps Script Web App returned non-JSON response for action '{current_action}': {response.text[:500]}") from exc
+            data = self._web_app_post_with_retries(current_action, body)
             if data.get("ok"):
                 if current_action != action:
                     logger.warning("Web App action '%s' is not supported, used fallback '%s'", action, current_action)
@@ -89,6 +87,28 @@ class GoogleSheetsClient:
                 break
 
         raise RuntimeError(f"Apps Script Web App error for action '{action}' (tried: {actions_to_try}): {last_data}")
+
+    def _web_app_post_with_retries(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Виконує POST до Apps Script Web App з повторними спробами при тимчасових збоях."""
+        last_err: Exception | None = None
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                response = requests.post(self.web_app_url, json=body, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                try:
+                    return response.json()
+                except ValueError as exc:
+                    raise RuntimeError(
+                        f"Apps Script Web App returned non-JSON response for action '{action}': {response.text[:500]}"
+                    ) from exc
+            except Exception as exc:
+                last_err = exc
+                logger.warning("Web App request failed for action '%s' (%s/%s): %s", action, attempt, MAX_RETRIES, exc)
+                if attempt < MAX_RETRIES:
+                    time.sleep(RETRY_DELAY_SECONDS * attempt)
+
+        raise RuntimeError(f"Apps Script Web App request failed for action '{action}' after retries: {last_err}")
 
     def ensure_header(self) -> None:
         if self.mode == "web_app":
