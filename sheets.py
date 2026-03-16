@@ -20,6 +20,8 @@ from config import (
     MAX_RETRIES,
     REQUEST_TIMEOUT,
     RETRY_DELAY_SECONDS,
+    WEB_APP_APPEND_BATCH_SIZE,
+    WEB_APP_APPEND_TIMEOUT,
 )
 
 logger = logging.getLogger(__name__)
@@ -94,7 +96,8 @@ class GoogleSheetsClient:
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                response = requests.post(self.web_app_url, json=body, timeout=REQUEST_TIMEOUT)
+                timeout = WEB_APP_APPEND_TIMEOUT if action == "append_rows" else REQUEST_TIMEOUT
+                response = requests.post(self.web_app_url, json=body, timeout=timeout)
                 response.raise_for_status()
                 try:
                     return response.json()
@@ -140,7 +143,12 @@ class GoogleSheetsClient:
             return
 
         if self.mode == "web_app":
-            self._web_app_request("append_rows", {"rows": rows})
+            batch_size = max(1, WEB_APP_APPEND_BATCH_SIZE)
+            total_batches = (len(rows) + batch_size - 1) // batch_size
+            for batch_number, batch_start in enumerate(range(0, len(rows), batch_size), start=1):
+                batch = rows[batch_start : batch_start + batch_size]
+                logger.info("Appending rows batch %s/%s (%s rows)", batch_number, total_batches, len(batch))
+                self._web_app_request("append_rows", {"rows": batch})
             return
 
         values = [[r.get(col, "") for col in MASTER_COLUMNS] for r in rows]

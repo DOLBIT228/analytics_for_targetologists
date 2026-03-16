@@ -76,6 +76,8 @@ STATE_FILE = Path(os.getenv("STATE_FILE", "state.json"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 RETRY_DELAY_SECONDS = float(os.getenv("RETRY_DELAY_SECONDS", "1.5"))
+WEB_APP_APPEND_TIMEOUT = int(os.getenv("WEB_APP_APPEND_TIMEOUT", str(REQUEST_TIMEOUT)))
+WEB_APP_APPEND_BATCH_SIZE = int(os.getenv("WEB_APP_APPEND_BATCH_SIZE", "200"))
 
 # Схема вихідних даних (порядок колонок у Google Sheets)
 MASTER_COLUMNS = [
