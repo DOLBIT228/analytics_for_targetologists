@@ -144,15 +144,43 @@ class GoogleSheetsClient:
 
         if self.mode == "web_app":
             batch_size = max(1, WEB_APP_APPEND_BATCH_SIZE)
-            total_batches = (len(rows) + batch_size - 1) // batch_size
-            for batch_number, batch_start in enumerate(range(0, len(rows), batch_size), start=1):
-                batch = rows[batch_start : batch_start + batch_size]
-                logger.info("Appending rows batch %s/%s (%s rows)", batch_number, total_batches, len(batch))
-                self._web_app_request("append_rows", {"rows": batch})
+            self._append_rows_web_app_in_batches(rows, batch_size)
             return
 
         values = [[r.get(col, "") for col in MASTER_COLUMNS] for r in rows]
         self.sheet.append_rows(values, value_input_option="USER_ENTERED")
+
+    def _append_rows_web_app_in_batches(self, rows: list[dict[str, Any]], batch_size: int) -> None:
+        total_batches = (len(rows) + batch_size - 1) // batch_size
+        for batch_number, batch_start in enumerate(range(0, len(rows), batch_size), start=1):
+            batch = rows[batch_start : batch_start + batch_size]
+            logger.info("Appending rows batch %s/%s (%s rows)", batch_number, total_batches, len(batch))
+            self._append_rows_web_app_adaptive(batch)
+
+    def _append_rows_web_app_adaptive(self, rows: list[dict[str, Any]]) -> None:
+        """Намагається додати рядки, автоматично зменшуючи батч при timeout помилках."""
+        if not rows:
+            return
+
+        try:
+            self._web_app_request("append_rows", {"rows": rows})
+        except RuntimeError as exc:
+            err_text = str(exc).lower()
+            is_timeout = "timed out" in err_text or "timeout" in err_text
+            if not is_timeout or len(rows) == 1:
+                raise
+
+            mid = len(rows) // 2
+            left = rows[:mid]
+            right = rows[mid:]
+            logger.warning(
+                "append_rows timeout for %s rows; retrying with smaller chunks (%s + %s)",
+                len(rows),
+                len(left),
+                len(right),
+            )
+            self._append_rows_web_app_adaptive(left)
+            self._append_rows_web_app_adaptive(right)
 
     def update_row_by_deal_id(self, row_number: int, row_data: dict[str, Any]) -> None:
         if self.mode == "web_app":
