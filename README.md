@@ -56,6 +56,12 @@
 
 > `secrets.toml` не треба комітити в GitHub. Додайте його тільки в середовище деплою (наприклад Streamlit Cloud).
 
+
+### Додаткові змінні оточення для стабільності Web App
+
+- `WEB_APP_APPEND_BATCH_SIZE` (default: `200`) — розмір батча для `append_rows` у режимі Apps Script Web App.
+- `WEB_APP_APPEND_TIMEOUT` (default: значення `REQUEST_TIMEOUT`) — таймаут (секунди) саме для запитів `append_rows`.
+
 ## Запуск Streamlit
 
 ```bash
@@ -104,6 +110,20 @@ streamlit run app.py
 1. Оновіть Apps Script код з `apps_script/Code.gs`.
 2. Зробіть **Deploy → Manage deployments → Edit → Deploy** (обов'язково перевипустіть deployment).
 3. Перевірте, що `google.web_app_url` у `secrets.toml` вказує саме на актуальний deployment URL.
+
+
+### Apps Script Web App request failed ... Read timed out
+
+Якщо бачите помилку на кшталт `Apps Script Web App request failed for action 'append_rows' ... Read timed out`, це зазвичай означає, що запит на вставку був занадто великим або Apps Script виконувався довше за таймаут клієнта.
+
+Що зроблено в поточній версії:
+- `append_rows` у `sheets.py` надсилається батчами (за замовчуванням по 200 рядків);
+- для `append_rows` можна задати окремий збільшений таймаут (`WEB_APP_APPEND_TIMEOUT`).
+
+Що спробувати:
+1. Зменшити `WEB_APP_APPEND_BATCH_SIZE` (наприклад, до `100` або `50`).
+2. Збільшити `WEB_APP_APPEND_TIMEOUT` (наприклад, до `60`–`120`).
+3. За потреби підвищити `MAX_RETRIES`.
 
 ### inotify watch limit reached
 
