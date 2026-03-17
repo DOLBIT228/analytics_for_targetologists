@@ -112,6 +112,8 @@ def initial_full_sync(
     bitrix_client: BitrixClient | None = None,
     sheet_client: GoogleSheetsClient | None = None,
     progress_callback: ProgressCallback | None = None,
+    date_create_gte: str | None = None,
+    date_create_lte: str | None = None,
 ) -> dict[str, Any]:
     bitrix_client = bitrix_client or BitrixClient()
     sheet_client = sheet_client or GoogleSheetsClient()
@@ -123,7 +125,11 @@ def initial_full_sync(
     _notify_progress(progress_callback, 0.05, "Починаємо повну синхронізацію")
 
     for pipeline_id in PIPELINES:
-        deals = bitrix_client.list_deals(category_id=pipeline_id)
+        deals = bitrix_client.list_deals(
+            category_id=pipeline_id,
+            date_create_gte=date_create_gte,
+            date_create_lte=date_create_lte,
+        )
         fetched += len(deals)
         for deal in deals:
             if has_any_utm(deal):
@@ -141,6 +147,8 @@ def initial_full_sync(
 
     result = {
         "mode": "initial_full_sync",
+        "date_create_gte": date_create_gte,
+        "date_create_lte": date_create_lte,
         "fetched": fetched,
         "matched_utm": filtered,
         "unique_deals": len(dedup),

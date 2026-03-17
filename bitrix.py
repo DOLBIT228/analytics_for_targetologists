@@ -51,8 +51,15 @@ class BitrixClient:
                     time.sleep(RETRY_DELAY_SECONDS * attempt)
         raise RuntimeError(f"Bitrix request failed after retries: {last_err}")
 
-    def list_deals(self, *, category_id: int | None = None, date_modify_gt: str | None = None) -> list[dict[str, Any]]:
-        """Return all deals with pagination for a given pipeline or modified-after filter."""
+    def list_deals(
+        self,
+        *,
+        category_id: int | None = None,
+        date_modify_gt: str | None = None,
+        date_create_gte: str | None = None,
+        date_create_lte: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return all deals with pagination and optional filters."""
         deals: list[dict[str, Any]] = []
         start = 0
 
@@ -62,6 +69,10 @@ class BitrixClient:
                 flt["CATEGORY_ID"] = category_id
             if date_modify_gt:
                 flt[">DATE_MODIFY"] = date_modify_gt
+            if date_create_gte:
+                flt[">=DATE_CREATE"] = date_create_gte
+            if date_create_lte:
+                flt["<=DATE_CREATE"] = date_create_lte
 
             payload = {
                 "filter": flt,

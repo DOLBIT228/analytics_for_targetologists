@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from datetime import date, datetime, time as dt_time, timezone
 from io import StringIO
 
 import streamlit as st
@@ -76,6 +77,20 @@ def render_status_panel() -> None:
     c2.metric("Угод у таблиці", str(deals_count))
 
 
+def _to_iso_date_start(value: date | None) -> str | None:
+    if value is None:
+        return None
+    dt = datetime.combine(value, dt_time.min).replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def _to_iso_date_end(value: date | None) -> str | None:
+    if value is None:
+        return None
+    dt = datetime.combine(value, dt_time.max).replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 def get_sheet_client() -> GoogleSheetsClient:
     """Повертає кешований інстанс клієнта Google Sheets в межах сесії Streamlit."""
     if "sheet_client" not in st.session_state:
@@ -116,6 +131,17 @@ def main() -> None:
 
         return _progress_callback
 
+    st.subheader("Параметри завантаження")
+    date_col1, date_col2 = st.columns(2)
+    with date_col1:
+        date_from = st.date_input("Дата створення від (для повної синхронізації)", value=None, format="YYYY-MM-DD")
+    with date_col2:
+        date_to = st.date_input("Дата створення до (для повної синхронізації)", value=None, format="YYYY-MM-DD")
+
+    if date_from and date_to and date_from > date_to:
+        st.error("Дата 'від' не може бути пізніше дати 'до'.")
+        return
+
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Запустити інкрементальну синхронізацію", type="primary"):
@@ -137,7 +163,12 @@ def main() -> None:
             progress_callback = make_progress_callback(start_ts)
             with st.spinner("Виконується повна початкова синхронізація..."):
                 try:
-                    result = initial_full_sync(sheet_client=sheet_client, progress_callback=progress_callback)
+                    result = initial_full_sync(
+                        sheet_client=sheet_client,
+                        progress_callback=progress_callback,
+                        date_create_gte=_to_iso_date_start(date_from),
+                        date_create_lte=_to_iso_date_end(date_to),
+                    )
                     st.success("Повну початкову синхронізацію завершено")
                     status_placeholder.success(f"Готово за {int(time.time() - start_ts)} с")
                     st.json(result)
