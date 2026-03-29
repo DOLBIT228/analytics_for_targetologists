@@ -369,9 +369,3 @@ streamlit run app.py --server.fileWatcherType none
 - Додати unit/integration тести для ETL-модулів.
 - Додати окремий лист `sync_audit` для історії запусків.
 - Експортувати метрики (Prometheus/Grafana або хоча б structured logs).
-
----
-
-## Ліцензія
-
-Якщо потрібно, додайте окремий файл `LICENSE` (наприклад MIT/Apache-2.0) згідно політики вашої команди.
